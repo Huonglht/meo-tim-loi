@@ -19,70 +19,354 @@
         }
         #gameContainer {
             background-color: rgba(255, 255, 255, 0.05);
-            padding: 15px; /* Reduced padding for smaller screens */
+            padding: 20px;
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
             text-align: center;
-            max-width: 98vw; /* Adjusted for smaller screens */
-            max-height: 98vh;
+            max-width: 95vw;
+            max-height: 95vh;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
         canvas {
-            border: 2px solid #4a4a6a;
+            border: 2px solid #4a4a6a; /* Darker border for canvas */
             border-radius: 8px;
             display: block;
             margin: 0 auto;
-            background-color: #0f0f1a;
+            background-color: #0f0f1a; /* Even darker for maze background */
             max-width: 100%;
+            /* height: auto; */ /* Height will be set by JS */
         }
-        #controlsAndInfo {
-            margin-top: 10px; /* Reduced margin */
+        #controlsContainer {
+            margin-top: 15px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 8px; /* Reduced gap */
-            width: 100%;
+            gap: 10px;
         }
-        .d-pad-button {
-            background-color: rgba(76, 29, 149, 0.7); /* Purple, semi-transparent */
-            color: white;
-            font-weight: bold;
-            border: 1px solid rgba(129, 94, 245, 0.7);
-            border-radius: 50%; /* Make them round */
-            width: 50px; /* Fixed size */
-            height: 50px; /* Fixed size */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            user-select: none; /* Prevent text selection on tap */
-            -webkit-user-select: none; /* Safari */
-            -ms-user-select: none; /* IE 10+ */
-            transition: background-color 0.1s ease;
+        .control-button, #startButton, #restartButton {
+            /* Tailwind will style these primarily */
+            min-width: 120px; /* Ensure buttons have some width */
         }
-        .d-pad-button:active {
-            background-color: rgba(107, 33, 168, 0.9); /* Darker purple on tap */
-        }
-        #mobileControls {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            gap: 8px;
-            width: 180px; /* Adjust D-pad size */
-            height: 180px; /* Adjust D-pad size */
-            margin-top: 10px;
-        }
-        #upButton { grid-area: 1 / 2 / 2 / 3; }
-        #leftButton { grid-area: 2 / 1 / 3 / 2; }
-        #rightButton { grid-area: 2 / 3 / 3 / 4; }
-        #downButton { grid-area: 3 / 2 / 4 / 3; }
-
         #messageBox {
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-5
+            transform: translate(-50%, -50%);
+            background-color: rgba(0,0,0,0.9);
+            color: white;
+            padding: 25px 35px;
+            border-radius: 10px;
+            font-size: 18px;
+            text-align: center;
+            z-index: 100;
+            min-width: 300px;
+            border: 1px solid #555;
+        }
+        #rewardCodeDisplay {
+            margin-top: 10px;
+            padding: 8px;
+            background-color: #333;
+            border-radius: 4px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #00ff00; /* Brighter Greenish color for code */
+            border: 1px dashed #555;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <h1 class="text-3xl font-bold mb-3 text-yellow-400">Mèo Tìm Lối</h1>
+        <canvas id="mazeCanvas"></canvas>
+        <div id="controlsContainer">
+            <p class="text-sm text-gray-400">Sử dụng phím mũi tên để di chuyển Mèo.</p>
+            <button id="startButton" class="bg-purple-600 hover:bg-purple-800 text-white font-bold py-2 px-5 rounded-lg shadow-md text-md transition-all duration-300 ease-in-out transform hover:scale-105">
+                Bắt Đầu
+            </button>
+        </div>
+    </div>
+
+    <div id="messageBox" class="hidden">
+        <p id="messageText" class="mb-3 text-xl"></p>
+        <div id="rewardCodeDisplay" class="hidden">
+            <p class="text-lg">Mã quà tặng của bạn:</p>
+            <div id="rewardCode"></div>
+        </div>
+        <button id="restartButton" class="mt-4 bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-5 rounded-lg shadow-md text-md transition-all duration-300 ease-in-out transform hover:scale-105">
+            Chơi Lại
+        </button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const rewardCodeDisplay = document.getElementById('rewardCodeDisplay');
+        const rewardCodeElement = document.getElementById('rewardCode');
+        const gameContainer = document.getElementById('gameContainer');
+
+        // Cấu hình mê cung
+        let mazeWidth = 15; // Số cột
+        let mazeHeight = 10; // Số hàng
+        let cellSize = 30;  // Kích thước mỗi ô (sẽ điều chỉnh)
+
+        let maze = [];
+        let player = { x: 0, y: 0, size: 0 }; // Kích thước mèo sẽ nhỏ hơn cellSize
+        let exit = { x: 0, y: 0 };
+
+        let gameStarted = false;
+        let gameOver = false;
+
+        // Hàm vẽ mèo trắng
+        function drawPlayer() {
+            const catDrawX = player.x * cellSize + (cellSize - player.size) / 2;
+            const catDrawY = player.y * cellSize + (cellSize - player.size) / 2;
+            const catW = player.size;
+            const catH = player.size;
+
+            ctx.save();
+            // Thân mèo
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.ellipse(catDrawX + catW / 2, catDrawY + catH / 2, catW / 2, catH / 2.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Tai mèo
+            const earHeight = catH * 0.35;
+            ctx.strokeStyle = '#DDDDDD';
+            ctx.lineWidth = 1;
+            // Tai trái
+            ctx.beginPath();
+            ctx.moveTo(catDrawX + catW * 0.2, catDrawY + catH * 0.1);
+            ctx.lineTo(catDrawX + catW * 0.1, catDrawY - earHeight * 0.5);
+            ctx.lineTo(catDrawX + catW * 0.35, catDrawY + catH * 0.15);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            // Tai phải
+            ctx.beginPath();
+            ctx.moveTo(catDrawX + catW * 0.8, catDrawY + catH * 0.1);
+            ctx.lineTo(catDrawX + catW * 0.9, catDrawY - earHeight * 0.5);
+            ctx.lineTo(catDrawX + catW * 0.65, catDrawY + catH * 0.15);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+
+            // Mắt mèo
+            const eyeRadius = catH * 0.15;
+            const eyePosY = catDrawY + catH * 0.40;
+            // Mắt trái (XANH DƯƠNG)
+            ctx.fillStyle = 'blue'; ctx.beginPath(); ctx.arc(catDrawX + catW * 0.35, eyePosY, eyeRadius, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'black'; ctx.beginPath(); ctx.arc(catDrawX + catW * 0.35, eyePosY, eyeRadius * 0.4, 0, Math.PI * 2); ctx.fill();
+            // Mắt phải (VÀNG)
+            ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(catDrawX + catW * 0.65, eyePosY, eyeRadius, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'black'; ctx.beginPath(); ctx.arc(catDrawX + catW * 0.65, eyePosY, eyeRadius * 0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+
+        // Hàm tạo mê cung (sử dụng Randomized DFS)
+        function generateMaze(cols, rows) {
+            let newMaze = Array(rows).fill(null).map(() => Array(cols).fill(null).map(() => ({
+                top: true, right: true, bottom: true, left: true, visited: false
+            })));
+
+            let stack = [];
+            let currentX = 0; // Bắt đầu từ góc trên bên trái
+            let currentY = 0;
+            newMaze[currentY][currentX].visited = true;
+            stack.push({ x: currentX, y: currentY });
+
+            while (stack.length > 0) {
+                let current = stack.pop();
+                currentX = current.x;
+                currentY = current.y;
+
+                let neighbors = [];
+                // Top
+                if (currentY > 0 && !newMaze[currentY - 1][currentX].visited) neighbors.push({ x: currentX, y: currentY - 1, wall: 'top', oppositeWall: 'bottom' });
+                // Right
+                if (currentX < cols - 1 && !newMaze[currentY][currentX + 1].visited) neighbors.push({ x: currentX + 1, y: currentY, wall: 'right', oppositeWall: 'left' });
+                // Bottom
+                if (currentY < rows - 1 && !newMaze[currentY + 1][currentX].visited) neighbors.push({ x: currentX, y: currentY + 1, wall: 'bottom', oppositeWall: 'top' });
+                // Left
+                if (currentX > 0 && !newMaze[currentY][currentX - 1].visited) neighbors.push({ x: currentX - 1, y: currentY, wall: 'left', oppositeWall: 'right' });
+
+                if (neighbors.length > 0) {
+                    stack.push(current);
+                    let chosenNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
+
+                    // Remove wall between current and chosen neighbor
+                    newMaze[currentY][currentX][chosenNeighbor.wall] = false;
+                    newMaze[chosenNeighbor.y][chosenNeighbor.x][chosenNeighbor.oppositeWall] = false;
+
+                    newMaze[chosenNeighbor.y][chosenNeighbor.x].visited = true;
+                    stack.push({ x: chosenNeighbor.x, y: chosenNeighbor.y });
+                }
+            }
+            return newMaze;
+        }
+
+        // Hàm vẽ mê cung
+        function drawMaze() {
+            ctx.strokeStyle = '#88aaff'; // Light blue for maze walls
+            ctx.lineWidth = 2;
+
+            for (let y = 0; y < mazeHeight; y++) {
+                for (let x = 0; x < mazeWidth; x++) {
+                    const cell = maze[y][x];
+                    const drawX = x * cellSize;
+                    const drawY = y * cellSize;
+
+                    if (cell.top) {
+                        ctx.beginPath(); ctx.moveTo(drawX, drawY); ctx.lineTo(drawX + cellSize, drawY); ctx.stroke();
+                    }
+                    if (cell.right) {
+                        ctx.beginPath(); ctx.moveTo(drawX + cellSize, drawY); ctx.lineTo(drawX + cellSize, drawY + cellSize); ctx.stroke();
+                    }
+                    if (cell.bottom) {
+                        ctx.beginPath(); ctx.moveTo(drawX + cellSize, drawY + cellSize); ctx.lineTo(drawX, drawY + cellSize); ctx.stroke();
+                    }
+                    if (cell.left) {
+                        ctx.beginPath(); ctx.moveTo(drawX, drawY + cellSize); ctx.lineTo(drawX, drawY); ctx.stroke();
+                    }
+                }
+            }
+
+            // Vẽ lối ra
+            ctx.fillStyle = '#ff8888'; // Light red for exit
+            ctx.fillRect(exit.x * cellSize + cellSize * 0.1, exit.y * cellSize + cellSize * 0.1, cellSize * 0.8, cellSize * 0.8);
+        }
+
+        // Hàm vẽ toàn bộ game
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawMaze();
+            drawPlayer();
+        }
+
+        // Hàm di chuyển người chơi
+        function movePlayer(dx, dy) {
+            if (gameOver || !gameStarted) return;
+
+            const currentCell = maze[player.y][player.x];
+            let newX = player.x + dx;
+            let newY = player.y + dy;
+
+            // Kiểm tra va chạm tường
+            if (dx === 1 && !currentCell.right) player.x = newX; // Move right
+            else if (dx === -1 && !currentCell.left) player.x = newX; // Move left
+            else if (dy === 1 && !currentCell.bottom) player.y = newY; // Move down
+            else if (dy === -1 && !currentCell.top) player.y = newY; // Move up
+
+            drawGame();
+            checkWinCondition();
+        }
+
+        // Hàm kiểm tra thắng
+        function checkWinCondition() {
+            if (player.x === exit.x && player.y === exit.y) {
+                gameOver = true;
+                gameStarted = false;
+                messageText.textContent = 'Chúc mừng! Mèo đã tìm thấy lối ra!';
+
+                const reward = generateRewardCode();
+                rewardCodeElement.textContent = reward;
+                rewardCodeDisplay.classList.remove('hidden');
+
+                messageBox.classList.remove('hidden');
+                startButton.classList.add('hidden'); // Ẩn nút bắt đầu chính
+            }
+        }
+
+        // Hàm tạo mã quà tặng
+        function generateRewardCode() {
+            // Kết hợp timestamp và một chuỗi ngẫu nhiên để tăng tính duy nhất
+            const timestampPart = Date.now().toString(36).toUpperCase();
+            const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+            return `CATMAZE-${timestampPart}-${randomPart}`;
+        }
+
+        // Hàm bắt đầu game
+        function startGame() {
+            // Điều chỉnh kích thước canvas và cell dựa trên kích thước container
+            const containerRect = gameContainer.getBoundingClientRect();
+            // Trừ padding và khoảng trống cho tiêu đề/nút
+            const availableWidth = containerRect.width - 40;
+            const availableHeight = containerRect.height - 120; // Trừ không gian cho tiêu đề và nút
+
+            // Ưu tiên chiều nào nhỏ hơn để vừa màn hình
+            if (availableWidth / mazeWidth < availableHeight / mazeHeight) {
+                cellSize = Math.floor(availableWidth / mazeWidth);
+            } else {
+                cellSize = Math.floor(availableHeight / mazeHeight);
+            }
+            // Giới hạn kích thước cell tối thiểu và tối đa
+            cellSize = Math.max(15, Math.min(cellSize, 40));
+
+
+            canvas.width = mazeWidth * cellSize;
+            canvas.height = mazeHeight * cellSize;
+
+            player.size = cellSize * 0.7; // Kích thước mèo
+
+            maze = generateMaze(mazeWidth, mazeHeight);
+            player.x = 0; // Bắt đầu từ góc trên bên trái
+            player.y = 0;
+            exit.x = mazeWidth - 1; // Lối ra ở góc dưới bên phải
+            exit.y = mazeHeight - 1;
+
+            gameStarted = true;
+            gameOver = false;
+
+            messageBox.classList.add('hidden');
+            rewardCodeDisplay.classList.add('hidden');
+            startButton.classList.add('hidden'); // Ẩn nút bắt đầu chính
+
+            drawGame();
+        }
+
+        // Xử lý sự kiện bàn phím
+        document.addEventListener('keydown', (e) => {
+            if (!gameStarted || gameOver) return;
+            switch (e.key) {
+                case 'ArrowUp': movePlayer(0, -1); e.preventDefault(); break;
+                case 'ArrowDown': movePlayer(0, 1); e.preventDefault(); break;
+                case 'ArrowLeft': movePlayer(-1, 0); e.preventDefault(); break;
+                case 'ArrowRight': movePlayer(1, 0); e.preventDefault(); break;
+            }
+        });
+
+        // Hàm khởi tạo ban đầu (vẽ màn hình chờ)
+        function initialize() {
+            // Thiết lập kích thước canvas ban đầu để người dùng thấy gì đó
+            const tempCellSize = 20;
+            canvas.width = mazeWidth * tempCellSize;
+            canvas.height = mazeHeight * tempCellSize;
+            ctx.fillStyle = '#0f0f1a';
+            ctx.fillRect(0,0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '16px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('Nhấn "Bắt Đầu" để tạo mê cung!', canvas.width / 2, canvas.height / 2);
+        }
+
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', () => {
+            messageBox.classList.add('hidden');
+            startGame(); // Gọi lại startGame để tạo mê cung mới và reset
+        });
+
+        // Gọi initialize khi tải trang
+        initialize();
+
+    </script>
+</body>
+</html>
